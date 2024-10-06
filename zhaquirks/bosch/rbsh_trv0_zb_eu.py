@@ -4,8 +4,9 @@ from typing import Any, Optional, Union
 
 from zigpy.quirks import CustomCluster
 from zigpy.quirks.v2 import QuirkBuilder
-from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType
+from zigpy.quirks.v2.homeassistant import EntityPlatform, EntityType, UnitOfTemperature
 from zigpy.quirks.v2.homeassistant.number import NumberDeviceClass
+from zigpy.quirks.v2.homeassistant.sensor import SensorDeviceClass, SensorStateClass
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl.clusters.hvac import (
@@ -125,21 +126,27 @@ class BoschThermostatCluster(CustomCluster, Thermostat):
 
         pi_heating_demand = ZCLAttributeDef(
             id=VALVE_POSITION_ATTR_ID,
-            # Values range from 0-100
             type=t.enum8,
             is_manufacturer_specific=True,
+            access="r*wp",
         )
 
         window_open = ZCLAttributeDef(
-            id=WINDOW_OPEN_ATTR_ID, type=State, is_manufacturer_specific=True
+            id=WINDOW_OPEN_ATTR_ID,
+            type=State,
+            is_manufacturer_specific=True
         )
 
         boost_heating = ZCLAttributeDef(
-            id=BOOST_HEATING_ATTR_ID, type=State, is_manufacturer_specific=True
+            id=BOOST_HEATING_ATTR_ID,
+            type=State,
+            is_manufacturer_specific=True
         )
 
         remote_temperature = ZCLAttributeDef(
-            id=REMOTE_TEMPERATURE_ATTR_ID, type=t.int16s, is_manufacturer_specific=True
+            id=REMOTE_TEMPERATURE_ATTR_ID,
+            type=t.int16s,
+            is_manufacturer_specific=True
         )
 
     async def write_attributes(
@@ -428,6 +435,15 @@ class BoschUserInterfaceCluster(CustomCluster, UserInterface):
     QuirkBuilder("BOSCH", "RBSH-TRV0-ZB-EU")
     .replaces(BoschThermostatCluster)
     .replaces(BoschUserInterfaceCluster)
+    # Local temperature
+    .sensor(
+        BoschThermostatCluster.AttributeDefs.local_temperature.name,
+        BoschThermostatCluster.cluster_id,
+        divisor=100,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        unit=UnitOfTemperature.CELSIUS,
+    )
     # Operating mode - read-only: controlled automatically through Thermostat.system_mode (HAVC mode).
     .enum(
         BoschThermostatCluster.AttributeDefs.operating_mode.name,
@@ -435,6 +451,14 @@ class BoschUserInterfaceCluster(CustomCluster, UserInterface):
         BoschThermostatCluster.cluster_id,
         entity_platform=EntityPlatform.SENSOR,
         entity_type=EntityType.DIAGNOSTIC,
+    )
+    # Valve state: will only work when Thermostat.system_mode (HAVC mode) is set to Off (Thermostat.operating_mode is set to Pause).
+    .number(
+        BoschThermostatCluster.AttributeDefs.pi_heating_demand.name,
+        BoschThermostatCluster.cluster_id,
+        min_value=0,
+        max_value=100,
+        step=1.0,
     )
     # Fast heating/boost.
     .switch(
